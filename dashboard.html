@@ -10,6 +10,7 @@
     body { margin: 0; background: #0d1117; color: #e6edf3; }
     main { width: min(1100px, calc(100% - 32px)); margin: 40px auto; }
     header { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 24px; }
+    .header-actions { display: flex; align-items: center; gap: 16px; }
     h1 { margin: 0 0 6px; font-size: 28px; } p { margin: 0; color: #8b949e; }
     #connection { color: #3fb950; font-size: 13px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px; }
@@ -21,6 +22,8 @@
     dl { margin: 18px 0; } dt { color: #8b949e; font-size: 12px; } dd { min-height: 20px; margin: 3px 0 13px; overflow-wrap: anywhere; }
     button { border: 0; border-radius: 7px; padding: 9px 14px; color: white; font-weight: 700; cursor: pointer; }
     .approve { background: #238636; } .reject { background: #da3633; } .actions { display: flex; gap: 8px; }
+    .sound-toggle { background: #30363d; }
+    .sound-toggle[aria-pressed="true"] { background: #238636; }
     .enrollment { box-sizing: border-box; width: 100%; margin: 0 0 12px; padding: 10px 11px; border: 1px solid #30363d; border-radius: 7px; background: #0d1117; color: #e6edf3; }
     .field-label { display: block; margin-bottom: 6px; color: #8b949e; font-size: 12px; }
     .error { min-height: 18px; margin-top: 8px; color: #f85149; font-size: 12px; }
@@ -29,7 +32,7 @@
 </head>
 <body>
   <main>
-    <header><div><h1>Training sessions</h1><p>Realtime synthetic demo values, held in memory only.</p></div><span id="connection">Connecting…</span></header>
+    <header><div><h1>Training sessions</h1><p>Realtime synthetic demo values, held in memory only.</p></div><div class="header-actions"><button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="false">Enable sound</button><span id="connection">Connecting…</span></div></header>
     <div id="sessions" class="grid"><div class="empty">No sessions connected.</div></div>
   </main>
   <script>
@@ -38,6 +41,9 @@
     const deliveryTargetDrafts = new Map();
     const container = document.getElementById('sessions');
     const connection = document.getElementById('connection');
+    const soundToggle = document.getElementById('sound-toggle');
+    let audioContext = null;
+    let soundEnabled = false;
     const uiConfig = {
       ticketIdLabel: 'Demo Ticket ID',
       accessCodeLabel: 'Demo Access Code',
@@ -106,6 +112,43 @@
       }
     }
 
+    function playNewSessionSound() {
+      if (!soundEnabled || !audioContext) return;
+      const now = audioContext.currentTime;
+      const oscillator = audioContext.createOscillator();
+      const volume = audioContext.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, now);
+      volume.gain.setValueAtTime(0.0001, now);
+      volume.gain.exponentialRampToValueAtTime(0.15, now + 0.01);
+      volume.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      oscillator.connect(volume);
+      volume.connect(audioContext.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 0.26);
+    }
+
+    soundToggle.addEventListener('click', async () => {
+      if (soundEnabled) {
+        soundEnabled = false;
+        soundToggle.textContent = 'Enable sound';
+        soundToggle.setAttribute('aria-pressed', 'false');
+        return;
+      }
+
+      try {
+        if (!window.AudioContext) throw new Error('Audio is not supported by this browser.');
+        audioContext ??= new AudioContext();
+        await audioContext.resume();
+        soundEnabled = true;
+        soundToggle.textContent = 'Sound on';
+        soundToggle.setAttribute('aria-pressed', 'true');
+      } catch (error) {
+        console.error('Could not enable dashboard sound.', error);
+        soundToggle.textContent = 'Sound unavailable';
+      }
+    });
+
     fetch('/api/ui-config')
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -123,7 +166,13 @@
     events.onopen = () => { connection.textContent = 'Live'; };
     events.onerror = () => { connection.textContent = 'Reconnecting…'; };
     events.addEventListener('snapshot', (event) => { for (const item of JSON.parse(event.data)) sessions.set(item.id, item); render(); });
-    events.addEventListener('session', (event) => { const item = JSON.parse(event.data); sessions.set(item.id, item); render(); });
+    events.addEventListener('session', (event) => {
+      const item = JSON.parse(event.data);
+      const isNewSession = !sessions.has(item.id);
+      sessions.set(item.id, item);
+      render();
+      if (isNewSession) playNewSessionSound();
+    });
   </script>
 </body>
 </html>

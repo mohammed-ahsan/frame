@@ -7,6 +7,7 @@ Frameflow is a ticket-authenticated image styling SaaS. A user enters through th
 Implemented:
 
 - Existing ticket session and manual approval flow, followed by a signed HTTP-only app session
+- Dashboard sound alerts for new sessions (enable sound once in the dashboard)
 - Responsive marketing landing page and authenticated creation dashboard
 - 20 preset catalog
 - MongoDB indexes and repositories used by the API
