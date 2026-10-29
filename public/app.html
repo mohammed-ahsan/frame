@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio — Frameflow</title>
+  <link rel="stylesheet" href="/public/site.css">
+</head>
+<body class="app-body">
+  <header class="app-header">
+    <a class="wordmark" href="/"><span>F</span> Frameflow</a>
+    <div class="usage-pill"><i></i><strong id="remaining">—</strong> creations left this hour</div>
+    <button class="icon-button" id="logout" type="button" aria-label="Sign out">↗</button>
+  </header>
+
+  <main class="studio shell">
+    <section class="studio-intro"><span class="kicker">Your private studio</span><h1>Make something<br><em>worth posting.</em></h1><p>Bring one image, find its mood, then let Frameflow do the art direction.</p></section>
+
+    <section class="creator" aria-label="Image creator">
+      <div class="upload-panel">
+        <div class="panel-label"><span>01</span> Add your photo</div>
+        <label class="dropzone" id="dropzone">
+          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden>
+          <img id="source-preview" alt="" hidden>
+          <span class="upload-icon">↑</span>
+          <strong>Drop it here</strong><small>or choose from your camera roll</small><em>JPG, PNG, WebP or HEIC · max 12 MB</em>
+        </label>
+      </div>
+      <div class="preset-panel">
+        <div class="preset-heading">
+          <div class="panel-label"><span>02</span> Choose your style</div>
+          <div class="style-toggle" role="group" aria-label="Style presentation">
+            <button type="button" data-presentation="female" aria-pressed="true">Female</button>
+            <button type="button" data-presentation="male" aria-pressed="false">Male</button>
+          </div>
+        </div>
+        <div id="preset-grid" class="preset-grid" data-presentation="female" aria-live="polite"></div>
+      </div>
+      <div class="create-row">
+        <button id="generate" class="button button-primary" type="button" disabled>Create this look <span>✦</span></button>
+        <div class="creation-status">
+          <p id="status" role="status">Choose a photo and preset to begin.</p>
+          <button id="scroll-recent" class="text-action" type="button" hidden>View recent frames <span aria-hidden="true">↓</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="recent-frames" class="gallery-section"><div class="gallery-heading"><div><span class="kicker">Your gallery</span><h2>Recent frames</h2></div><p>Delete old files any time to free up your storage.</p></div><div id="gallery" class="gallery"><div class="empty-gallery">Your creations will land here.</div></div></section>
+
+    <section class="account-strip" aria-label="Account usage">
+      <div><span>Hourly use</span><strong id="usage-detail">—</strong></div>
+      <div><span>Files</span><strong id="file-detail">—</strong></div>
+      <div><span>Storage</span><strong id="storage-detail">—</strong></div>
+      <div class="referral"><span>Need a little more?</span><strong>Invite a friend, unlock +1/hour</strong><button id="copy-referral" type="button">Copy invite link</button></div>
+    </section>
+
+  </main>
+  <footer class="app-footer">
+    <div class="shell app-footer-inner">
+      <a class="wordmark" href="/"><span>F</span> Frameflow</a>
+      <p>Private by design. Made for your next post.</p>
+      <p>© <span id="footer-year">2026</span> Frameflow</p>
+    </div>
+  </footer>
+  <script src="/public/app.js" defer></script>
+</body>
+</html>

