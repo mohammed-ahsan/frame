@@ -29,6 +29,18 @@ async function ensureIndexes(db) {
     db.collection('taskSubmissions').createIndex({ userId: 1, createdAt: -1 }),
     db.collection('payoutRequests').createIndex({ userId: 1, createdAt: -1 }),
     db.collection('payoutRequests').createIndex({ userId: 1, status: 1 }),
+    db.collection('payoutRequests').createIndex(
+      { userId: 1 },
+      { unique: true, partialFilterExpression: { status: { $in: ['pending', 'processing'] } } },
+    ),
+    db.collection('affiliateAccess').createIndex({ username: 1 }, { unique: true }),
+    db.collection('affiliateUsage').createIndex({ userId: 1, day: 1 }, { unique: true }),
+    db.collection('affiliateAppUsage').createIndex({ userId: 1, day: 1 }, { unique: true }),
+    db.collection('affiliateSubmissions').createIndex({ userId: 1, createdAt: -1 }),
+    db.collection('affiliateSubmissions').createIndex({ status: 1, createdAt: 1 }),
+    db.collection('affiliateGenerations').createIndex({ userId: 1, createdAt: -1 }),
+    db.collection('affiliateGenerations').createIndex({ generationId: 1 }, { unique: true }),
+    db.collection('affiliateSubmissions').createIndex({ generationId: 1 }, { unique: true }),
     db.collection('generations').createIndex({ userId: 1, createdAt: -1 }),
     db.collection('mediaFiles').createIndex({ userId: 1, createdAt: -1 }),
   ]);

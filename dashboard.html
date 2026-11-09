@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Training Session Dashboard</title>
+  <title>Frameflow Dashboard</title>
   <link rel="icon" type="image/svg+xml" href="/assets/frameflow-favicon.svg">
   <style>
     :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
@@ -28,11 +28,54 @@
     .field-label { display: block; margin-bottom: 6px; color: #8b949e; font-size: 12px; }
     .error { min-height: 18px; margin-top: 8px; color: #f85149; font-size: 12px; }
     .empty { padding: 36px; border: 1px dashed #30363d; border-radius: 12px; text-align: center; color: #8b949e; }
+    .management { margin: 30px 0; padding: 22px; border: 1px solid #30363d; border-radius: 12px; background: #161b22; }
+    .payout-management { margin-top: 22px; }
+    .management h2 { margin: 0 0 14px; font-size: 19px; }
+    .management-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 18px; }
+    .management-form { display: flex; gap: 8px; margin-bottom: 12px; }
+    .management input, .management textarea { box-sizing: border-box; padding: 10px; border: 1px solid #30363d; border-radius: 7px; background: #0d1117; color: #e6edf3; font: inherit; }
+    .management-form input { min-width: 0; flex: 1; }
+    .management button { background: #30363d; }
+    .access-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #30363d; }
+    .review-list { display: grid; gap: 12px; }
+    .review-card { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; padding: 14px; border: 1px solid #30363d; border-radius: 10px; background: #0d1117; }
+    .payout-review-card { grid-template-columns: 1fr; }
+    .review-card img { width: 100%; max-height: 230px; object-fit: cover; border-radius: 6px; }
+    .review-card h3 { margin: 0 0 6px; }
+    .review-card p { margin: 10px 0; color: #c9d1d9; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .review-card small { color: #8b949e; }
+    .review-card textarea { display: block; width: 100%; min-height: 72px; margin: 12px 0; resize: vertical; }
+    .review-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .review-actions .approve { background: #238636; } .review-actions .reject { background: #da3633; }
+    .queue-error { min-height: 18px; margin-top: 8px; color: #f85149; font-size: 12px; }
+    @media (max-width: 560px) { .review-card { grid-template-columns: 90px minmax(0, 1fr); gap: 10px; padding: 10px; } .management-form { flex-wrap: wrap; } }
   </style>
 </head>
 <body>
   <main>
-    <header><div><h1>Training sessions</h1><p>Realtime synthetic demo values, held in memory only.</p></div><div class="header-actions"><button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="false">Enable sound</button><span id="connection">Connecting…</span></div></header>
+    <header><div><h1>Frameflow dashboard</h1><p>Manage affiliate access, review submissions, and handle withdrawals.</p></div><div class="header-actions"><button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="false">Enable sound</button><span id="connection">Connecting…</span></div></header>
+    <section class="management" aria-label="Affiliate administration">
+      <div class="management-grid">
+        <div>
+          <h2>Affiliate username access</h2>
+          <p>Enabled accounts can use the separate Android allowance: 50 extra image generations each UTC day.</p>
+          <form id="affiliate-access-form" class="management-form">
+            <input id="affiliate-username-input" name="username" minlength="3" maxlength="32" placeholder="Username to enable" required>
+            <button type="submit">Enable</button>
+          </form>
+          <p id="affiliate-access-status" class="queue-error" role="status"></p>
+          <div id="affiliate-access-list" aria-live="polite"><div class="empty">Loading affiliate accounts…</div></div>
+        </div>
+        <div>
+          <h2>Affiliate submissions</h2>
+          <div id="affiliate-review-list" class="review-list" aria-live="polite"><div class="empty">Loading submissions…</div></div>
+        </div>
+      </div>
+      <div class="payout-management">
+        <h2>Affiliate withdrawals</h2>
+        <div id="affiliate-payout-list" class="review-list" aria-live="polite"><div class="empty">Loading withdrawals…</div></div>
+      </div>
+    </section>
     <div id="sessions" class="grid"><div class="empty">No sessions connected.</div></div>
   </main>
   <script>
@@ -49,6 +92,144 @@
       accessCodeLabel: 'Demo Access Code',
       codeText: 'verification value',
     };
+
+    async function dashboardApi(url, options = {}) {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `Request failed (${response.status}).`);
+      }
+      return response.status === 204 ? null : response.json();
+    }
+
+    function renderAffiliateAccess(affiliates) {
+      const list = document.getElementById('affiliate-access-list');
+      list.replaceChildren();
+      if (!affiliates.length) {
+        const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No affiliate usernames enabled yet.'; list.append(empty); return;
+      }
+      for (const affiliate of affiliates) {
+        const row = document.createElement('div'); row.className = 'access-item';
+        const username = document.createElement('strong'); username.textContent = affiliate.username;
+        const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Disable';
+        remove.addEventListener('click', async () => {
+          remove.disabled = true;
+          try { await dashboardApi(`/api/dashboard/affiliate-access/${encodeURIComponent(affiliate.username)}`, { method: 'DELETE' }); await refreshAffiliateDashboard(); }
+          catch (error) { document.getElementById('affiliate-access-status').textContent = error.message; remove.disabled = false; }
+        });
+        row.append(username, remove); list.append(row);
+      }
+    }
+
+    function renderAffiliateReviews(submissions) {
+      const list = document.getElementById('affiliate-review-list');
+      list.replaceChildren();
+      if (!submissions.length) {
+        const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No affiliate submissions awaiting review.'; list.append(empty); return;
+      }
+      for (const submission of submissions) {
+        const card = document.createElement('article'); card.className = 'review-card';
+        const image = document.createElement('img'); image.src = `/api/dashboard/affiliate-submissions/${submission.id}/image`; image.alt = `Affiliate submission: ${submission.styleName}`;
+        const details = document.createElement('div');
+        const title = document.createElement('h3'); title.textContent = `${submission.styleName} · ${submission.username}`;
+        const prompt = document.createElement('p'); prompt.textContent = submission.prompt;
+        const date = document.createElement('small'); date.textContent = `Submitted ${new Date(submission.createdAt).toLocaleString()} · feedback due ${new Date(submission.feedbackDueAt).toLocaleString()} · reward ৳50`;
+        const feedback = document.createElement('textarea'); feedback.maxLength = 1000; feedback.placeholder = 'Add clear, actionable revision feedback (required to request changes).';
+        const actions = document.createElement('div'); actions.className = 'review-actions';
+        const error = document.createElement('p'); error.className = 'queue-error';
+        const decide = async (decision) => {
+          error.textContent = '';
+          if (decision === 'feedback' && !feedback.value.trim()) { error.textContent = 'Write feedback before requesting a revision.'; feedback.focus(); return; }
+          actions.querySelectorAll('button').forEach((button) => { button.disabled = true; });
+          try {
+            await dashboardApi(`/api/dashboard/affiliate-submissions/${submission.id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ decision, feedback: feedback.value.trim() }),
+            });
+            await refreshAffiliateDashboard();
+          } catch (requestError) {
+            error.textContent = requestError.message;
+            actions.querySelectorAll('button').forEach((button) => { button.disabled = false; });
+          }
+        };
+        for (const [decision, label, className] of [
+          ['approved', 'Approve · ৳50', 'approve'],
+          ['feedback', 'Request changes', ''],
+          ['rejected', 'Deny', 'reject'],
+        ]) {
+          const button = document.createElement('button'); button.type = 'button'; button.className = className; button.textContent = label;
+          button.addEventListener('click', () => decide(decision)); actions.append(button);
+        }
+        details.append(title, prompt, date, feedback, actions, error);
+        card.append(image, details); list.append(card);
+      }
+    }
+
+    function renderAffiliatePayouts(payouts) {
+      const list = document.getElementById('affiliate-payout-list');
+      list.replaceChildren();
+      if (!payouts.length) {
+        const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No withdrawals awaiting review.'; list.append(empty); return;
+      }
+      for (const payout of payouts) {
+        const card = document.createElement('article'); card.className = 'review-card payout-review-card';
+        const details = document.createElement('div');
+        const title = document.createElement('h3'); title.textContent = `৳${(payout.amountPaisa / 100).toLocaleString('en-BD')} · ${payout.username}`;
+        const number = document.createElement('p'); number.textContent = `bKash ${payout.bkashNumber}`;
+        const date = document.createElement('small'); date.textContent = `Requested ${new Date(payout.createdAt).toLocaleString()}`;
+        const actions = document.createElement('div'); actions.className = 'review-actions';
+        const error = document.createElement('p'); error.className = 'queue-error';
+        for (const [status, label, className] of [['paid', 'Mark paid', 'approve'], ['rejected', 'Deny', 'reject']]) {
+          const button = document.createElement('button'); button.type = 'button'; button.className = className; button.textContent = label;
+          button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+              await dashboardApi(`/api/dashboard/affiliate-payouts/${payout.id}`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+              });
+              await refreshAffiliateDashboard();
+            } catch (requestError) { error.textContent = requestError.message; button.disabled = false; }
+          });
+          actions.append(button);
+        }
+        details.append(title, number, date, actions, error); card.append(details); list.append(card);
+      }
+    }
+
+    async function refreshAffiliateDashboard() {
+      try {
+        const [access, reviews, payouts] = await Promise.all([
+          dashboardApi('/api/dashboard/affiliate-access'),
+          dashboardApi('/api/dashboard/affiliate-submissions'),
+          dashboardApi('/api/dashboard/affiliate-payouts'),
+        ]);
+        renderAffiliateAccess(access.affiliates);
+        renderAffiliateReviews(reviews.submissions);
+        renderAffiliatePayouts(payouts.payouts);
+      } catch (error) {
+        for (const id of ['affiliate-access-list', 'affiliate-review-list', 'affiliate-payout-list']) {
+          const target = document.getElementById(id); const message = document.createElement('p'); message.className = 'queue-error'; message.textContent = error.message; target.replaceChildren(message);
+        }
+      }
+    }
+
+    document.getElementById('affiliate-access-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const input = document.getElementById('affiliate-username-input');
+      const status = document.getElementById('affiliate-access-status');
+      status.textContent = '';
+      try {
+        await dashboardApi('/api/dashboard/affiliate-access', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: input.value.trim() }),
+        });
+        input.value = '';
+        await refreshAffiliateDashboard();
+        status.textContent = 'Affiliate access enabled.';
+      } catch (error) { status.textContent = error.message; }
+    });
+
+    refreshAffiliateDashboard();
+    setInterval(refreshAffiliateDashboard, 30000);
 
     function render() {
       container.replaceChildren();

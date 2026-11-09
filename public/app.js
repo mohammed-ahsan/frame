@@ -31,6 +31,7 @@ function formatBytes(bytes) {
 function renderMe(me) {
   state.me = me; state.referralUrl = me.referralUrl;
   $('#remaining').textContent = me.quota.remaining;
+  $('#affiliate-link').hidden = !me.isAffiliate;
   $('#usage-detail').textContent = `${me.quota.used} / ${me.quota.hourlyLimit}`;
   $('#file-detail').textContent = `${me.files.used} / ${me.files.limit}`;
   $('#storage-detail').textContent = `${formatBytes(me.storage.usedBytes)} / ${formatBytes(me.storage.limitBytes)}`;
@@ -133,51 +134,6 @@ async function refresh() {
   renderMe(me); renderGallery(media.files);
 }
 
-function renderEarningTasks(data) {
-  $('#earning-balance').textContent = `৳${(data.balancePaisa / 100).toLocaleString('en-BD')}`;
-  const payoutButton = $('#request-payout'); payoutButton.disabled = data.availablePaisa < data.minimumPayoutPaisa || Boolean(data.activeWithdrawal);
-  payoutButton.textContent = data.activeWithdrawal ? 'Payout under review' : 'Request bKash payout';
-  const history = $('#payout-history');
-  history.replaceChildren(...data.withdrawals.map((item) => { const row = document.createElement('p'); row.textContent = `৳${(item.amountPaisa / 100).toLocaleString('en-BD')} · ${item.status} · ${new Date(item.createdAt).toLocaleDateString()}`; return row; }));
-  const container = $('#earning-tasks');
-  container.replaceChildren(...data.tasks.map((task) => {
-    const card = document.createElement('article'); card.className = 'earning-task';
-    const title = document.createElement('h3'); title.textContent = task.title;
-    const description = document.createElement('p'); description.textContent = task.description;
-    const reward = document.createElement('strong'); reward.className = 'task-reward'; reward.textContent = `Earn ${task.rewardLabel}`;
-    card.append(title, description, reward);
-    if (task.submission) {
-      const status = document.createElement('span'); status.className = `task-status task-status-${task.submission.status}`;
-      status.textContent = task.submission.status === 'pending' ? 'Under review' : task.submission.status === 'approved' ? 'Approved' : 'Not approved';
-      card.append(status);
-    } else {
-      const form = document.createElement('form'); form.className = 'task-form';
-      let styleName; let existingPrompt;
-      if (task.kind === 'existing') {
-        styleName = document.createElement('input'); styleName.required = true; styleName.maxLength = 100; styleName.placeholder = 'Existing style name'; styleName.setAttribute('aria-label', 'Existing style name');
-        existingPrompt = document.createElement('textarea'); existingPrompt.required = true; existingPrompt.minLength = 10; existingPrompt.maxLength = 2000; existingPrompt.rows = 3; existingPrompt.placeholder = 'Paste the existing style prompt'; existingPrompt.setAttribute('aria-label', 'Existing style prompt');
-      }
-      const input = document.createElement('textarea'); input.required = true; input.minLength = 20; input.maxLength = 2000; input.rows = 4; input.placeholder = task.kind === 'existing' ? 'Your improved version (20–2,000 characters)' : 'Describe the look, mood, and visual details (20–2,000 characters)'; input.setAttribute('aria-label', task.title);
-      const button = document.createElement('button'); button.type = 'submit'; button.className = 'button button-primary'; button.textContent = task.actionLabel;
-      const status = document.createElement('p'); status.className = 'task-message'; status.setAttribute('role', 'status');
-      if (styleName) form.append(styleName, existingPrompt); form.append(input, button, status); form.addEventListener('submit', async (event) => {
-        event.preventDefault(); button.disabled = true; status.textContent = 'Submitting…';
-        try { await api(`/api/earning-tasks/${task.id}/submissions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submission: input.value, styleName: styleName?.value, existingPrompt: existingPrompt?.value }) }); renderEarningTasks(await api('/api/earning-tasks')); }
-        catch (error) { status.textContent = error.message; button.disabled = false; }
-      });
-      card.append(form);
-    }
-    return card;
-  }));
-}
-
-$('#payout-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const button = $('#request-payout'); const status = $('#payout-status'); button.disabled = true; status.textContent = 'Submitting payout request…';
-  try { await api('/api/payout-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bkashNumber: $('#bkash-number').value }) }); status.textContent = 'Request submitted. The team will review and pay it manually.'; renderEarningTasks(await api('/api/earning-tasks')); }
-  catch (error) { status.textContent = error.message; button.disabled = false; }
-});
-
 $('#file-input').addEventListener('change', (event) => uploadFile(event.target.files[0]));
 for (const eventName of ['dragenter', 'dragover']) $('#dropzone').addEventListener(eventName, (event) => { event.preventDefault(); $('#dropzone').classList.add('dragging'); });
 for (const eventName of ['dragleave', 'drop']) $('#dropzone').addEventListener(eventName, (event) => { event.preventDefault(); $('#dropzone').classList.remove('dragging'); });
@@ -203,4 +159,8 @@ $('#logout').addEventListener('click', async () => { await api('/api/auth/logout
 
 $('#footer-year').textContent = new Date().getFullYear();
 
-Promise.all([api('/api/presets'), refresh(), api('/api/earning-tasks')]).then(([data, , earningData]) => { renderPresets(data.presets); renderEarningTasks(earningData); }).catch((error) => setStatus(error.message, 'error'));
+api('/api/presets')
+  .then((data) => renderPresets(data.presets))
+  .catch((error) => setStatus(`Could not load styles: ${error.message}`, 'error'));
+
+refresh().catch((error) => setStatus(error.message, 'error'));

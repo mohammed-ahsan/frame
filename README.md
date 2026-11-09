@@ -17,6 +17,10 @@ Implemented:
 - Referral capture and one-time redemption, capped by `MAX_REFERRAL_BONUS`
 - Per-user file and byte quotas, gallery serving, and deletion
 - Provider-neutral image transformation boundary
+- Username-gated affiliate studio with custom prompt generation, a 30-image UTC daily limit, and review tracking
+- Kotlin Android affiliate app with a separate 50-generation UTC daily allowance for enabled affiliate accounts
+- Affiliate submission review and username access management in the operator dashboard; approved entries earn ৳50 each
+- bKash withdrawal requests from an approved balance of at least ৳1,500
 
 - Gemini image-to-image generation through the Interactions API using the stable `gemini-3.1-flash-image` model
 - Eden AI reference-image generation through Universal AI, using `image/generation/pruna/p-image`
@@ -25,7 +29,8 @@ Implemented:
 ## Project layout
 
 ```text
-public/                 Landing page and authenticated studio UI
+public/                 Landing page, authenticated studio, affiliate UI, and Android APK download
+android-app/            Kotlin Android WebView app and Gradle build
 src/
   domain/               Presets and pure limit calculations
   infrastructure/       MongoDB and GridFS setup
@@ -51,7 +56,23 @@ npm.cmd test
 npm.cmd run dev
 ```
 
-Open `http://127.0.0.1:3000/`. The approval operator uses `/dashboard.html` and the visitor signs in at `/login`.
+Open `http://127.0.0.1:3000/`. The approval operator uses `/dashboard.html` and the visitor signs in at `/login`. Enable a username in the dashboard's Affiliate username access panel to grant access to the affiliate studio. The username is the same username entered at ticket login.
+
+Affiliates can generate up to 30 images per UTC day. Each approved image submission earns ৳50; bKash withdrawals can be requested once the available approved balance is at least ৳1,500. Enter an 11-digit Bangladesh bKash number; only one withdrawal request can be active at a time, and requested withdrawals are expected to be disbursed within two hours. Submissions are expected to receive dashboard feedback within about two hours.
+
+Affiliate accounts enabled from the dashboard also receive a separate allowance of 50 Android-app generations per UTC day. When an enabled affiliate uses all 30 web generations, the affiliate page offers the Android APK. The Android app includes a native affiliate studio for photo upload, style generation, review submissions, feedback revisions, earnings, and withdrawal requests. Sign-in uses the existing Frameflow approval flow, and the server matches the resulting username against the dashboard's Affiliate username access list.
+
+The app does not read Instagram's private app data. Users enter their username through the existing Frameflow sign-in flow; a username alone is not treated as proof of identity.
+
+Download the current production-targeted debug APK from `/downloads/Frameflow-Affiliates.apk`. The production API defaults to `https://instagram.indexbase.online`; the development flavor defaults to the Android emulator host `http://10.0.2.2:3000`. Override either at build time with Gradle properties. To build both:
+
+```powershell
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+.\android-app\gradlew.bat -p android-app assembleDevDebug assembleProdDebug
+Copy-Item android-app\app\build\outputs\apk\prod\debug\app-prod-debug.apk public\downloads\Frameflow-Affiliates.apk
+```
+
+To use a different local API host or production domain, pass `-PframeflowDevApiUrl=http://10.0.2.2:3000` and/or `-PframeflowProdApiUrl=https://instagram.indexbase.online`. The Android client marker selects the separate app counter; the server enforces the daily allowance per signed-in, dashboard-enabled affiliate account. This is account eligibility, not Google Play Integrity verification.
 
 If the legacy preview is already using port 3000, run the new app on another port for that shell:
 

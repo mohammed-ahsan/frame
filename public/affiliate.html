@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Affiliate Studio — Frameflow</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/frameflow-favicon.svg">
+  <link rel="stylesheet" href="/public/site.css?v=affiliate-withdrawal-guide-20261109-2">
+</head>
+<body class="app-body">
+  <header class="app-header affiliate-header">
+    <a class="wordmark" href="/app"><span>F</span> Frameflow</a>
+    <div class="affiliate-header-balance"><span>Approved balance</span><strong id="header-approved-balance">৳0</strong></div>
+    <a class="text-action" href="/app">Back to studio</a>
+    <button class="icon-button" id="logout" type="button" aria-label="Sign out">↗</button>
+  </header>
+
+  <main class="studio shell affiliate-page">
+    <section class="studio-intro">
+      <span class="kicker">Earn with Frameflow</span>
+      <h1>Make a style.<br><em>Submit your best.</em></h1>
+      <p>Generate with your own style name and prompt. Fine-tune until the image matches, then send it for review.</p>
+    </section>
+
+    <section class="affiliate-summary" aria-label="Affiliate account">
+      <div><span>Affiliate</span><strong id="affiliate-username">Loading…</strong></div>
+      <div><span>Generations today</span><strong id="web-generation-count">Web — / 30</strong><small id="app-generation-count">Android app — / 50 · separate daily allowance</small><small>Resets at 00:00 UTC</small></div>
+      <div><span>Approved balance</span><strong id="earning-balance">৳0</strong><small id="available-balance">৳0 available</small></div>
+    </section>
+
+    <aside id="android-app-offer" class="android-app-offer" hidden>
+      <div><strong>Need more generations?</strong><p>Install Frameflow Affiliates for 50 additional image generations each day.</p></div>
+      <a class="button button-dark" href="/downloads/Frameflow-Affiliates.apk" download>Download Android APK</a>
+    </aside>
+
+    <section class="creator affiliate-creator" aria-label="Affiliate style generator">
+      <div class="upload-panel">
+        <div class="panel-label"><span>01</span> Add your photo</div>
+        <label class="dropzone" id="dropzone">
+          <input id="file-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" hidden>
+          <img id="source-preview" alt="" hidden>
+          <span class="upload-icon">↑</span>
+          <strong>Drop it here</strong><small>or choose from your camera roll</small><em>JPG, PNG, WebP or HEIC · max 12 MB</em>
+        </label>
+      </div>
+      <div class="affiliate-prompt-panel">
+        <div class="panel-label"><span>02</span> Describe your style</div>
+        <label for="style-name">Style name</label>
+        <input id="style-name" maxlength="80" placeholder="e.g. Monsoon editorial">
+        <label for="style-prompt">Image prompt</label>
+        <textarea id="style-prompt" rows="8" minlength="20" maxlength="2000" placeholder="Describe the mood, lighting, colors, setting, wardrobe, textures, and composition you want."></textarea>
+        <p class="affiliate-hint">Editing the name or prompt clears the current result. Generate again so the submitted image always matches your prompt.</p>
+        <button id="generate-affiliate" class="button button-primary" type="button" disabled>Generate image <span>✦</span></button>
+        <p id="generation-status" role="status" aria-live="polite"></p>
+        <button id="cancel-revision" class="text-action" type="button" hidden>Cancel revision</button>
+      </div>
+    </section>
+
+    <section id="generated-result" class="affiliate-result" hidden>
+      <div class="gallery-heading"><div><span class="kicker">Your result</span><h2>Review the match</h2></div><p>Change the prompt to clear this image and create another version.</p></div>
+      <img id="generated-preview" alt="Generated affiliate style preview">
+      <div class="affiliate-submit-row">
+        <p id="submission-status" role="status"></p>
+        <button id="submit-affiliate" class="button button-dark" type="button">Submit for review · ৳50</button>
+      </div>
+    </section>
+
+    <section class="affiliate-guide">
+      <div class="gallery-heading"><div><span class="kicker">A quick guide</span><h2>Get a stronger result</h2></div><p>Up to 30 image generations each day. Approved submissions earn ৳50 each.</p></div>
+      <div class="affiliate-guide-grid">
+        <article><strong>01</strong><h3>Be specific</h3><p>Describe a clear look: lighting, palette, location, clothing, mood, and camera framing. Replace vague words like “beautiful” with visible details.</p></article>
+        <article><strong>02</strong><h3>Change one thing</h3><p>Review the first image, then refine one or two prompt details at a time. Every prompt edit clears the old preview so the final submission stays in sync.</p></article>
+        <article><strong>03</strong><h3>Submit your best</h3><p>Check that the style name and prompt describe the image. Confirm before submission; you’ll see feedback or a decision within about 2 hours.</p></article>
+      </div>
+      <p class="affiliate-payout-note">Request a withdrawal once your available balance reaches ৳1,500. Enter an 11-digit bKash number; withdrawals will be disbursed within 2 hours.</p>
+    </section>
+
+    <section class="affiliate-history">
+      <div class="gallery-heading"><div><span class="kicker">Your work</span><h2>Submission history</h2></div><p>Pending entries show when feedback is expected.</p></div>
+      <div id="affiliate-submissions" class="affiliate-submissions" aria-live="polite"><p>Loading submissions…</p></div>
+    </section>
+
+    <form id="payout-form" class="payout-form">
+      <div class="payout-entry-row">
+        <div><label for="bkash-number">bKash number</label><input id="bkash-number" name="bkashNumber" type="tel" inputmode="numeric" pattern="01[3-9][0-9]{8}" minlength="11" maxlength="11" placeholder="017*******" autocomplete="tel" required></div>
+        <button id="request-payout" class="button button-dark" type="submit" disabled>Withdrawal guide</button>
+      </div>
+      <section id="withdrawal-guide" class="withdrawal-guide" aria-live="polite" hidden>
+        <div class="withdrawal-guide-heading"><h2>How to request a withdrawal</h2><button id="close-withdrawal-guide" class="text-action" type="button">Close</button></div>
+        <ol>
+          <li>Submit your styles for review. Each approved style adds ৳50 to your earnings.</li>
+          <li>Once your available earnings reach ৳1,500, you can request a withdrawal.</li>
+          <li>Check that the bKash number above is correct. Withdrawals are disbursed within 2 hours.</li>
+        </ol>
+        <p id="withdrawal-guide-status" role="status"></p>
+        <button id="confirm-payout" class="button button-dark" type="button" hidden>Confirm withdrawal</button>
+      </section>
+      <p id="payout-status" role="status" hidden></p>
+    </form>
+    <div id="payout-history" class="payout-history" aria-live="polite"></div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="shell app-footer-inner">
+      <a class="wordmark" href="/"><span>F</span> Frameflow</a>
+      <p>Private by design. Made for your next post.</p>
+      <p>© <span id="footer-year">2026</span> Frameflow</p>
+    </div>
+  </footer>
+  <script src="/public/affiliate.js?v=affiliate-withdrawal-guide-20261109-1" defer></script>
+</body>
+</html>
