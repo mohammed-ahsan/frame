@@ -18,6 +18,11 @@ const { QuotaExceededError, QuotaService } = require('./services/quota-service')
 const { MediaLimitError, MediaService } = require('./services/media-service');
 const { signSession, verifySession } = require('./security/session-token');
 
+const EARNING_TASKS = [
+  { id: 'new-style-prompt', title: 'Create a new style prompt', description: 'Suggest an original style concept and prompt. Include the look, mood, and visual details.', rewardPaisa: 10000, rewardLabel: '৳100', actionLabel: 'Submit new style', kind: 'new' },
+  { id: 'existing-style-prompt', title: 'Improve an existing style prompt', description: 'Choose a current Frameflow style, then submit an improved prompt with a short explanation.', rewardPaisa: 5000, rewardLabel: '৳50', actionLabel: 'Submit improvement', kind: 'existing' },
+];
+
 const config = loadConfig();
 const app = express();
 const ticketSessions = new Map();
@@ -244,6 +249,71 @@ app.get('/api/me', requireMongo, requireUser, async (request, response, next) =>
       referralUrl: `${config.BASE_URL}/?ref=${user.referralCode}`,
     });
   } catch (error) { next(error); }
+});
+
+app.get('/api/earning-tasks', requireMongo, requireUser, async (request, response, next) => {
+  try {
+    const userId = new ObjectId(request.user.userId);
+    const submissions = await mongo.db.collection('taskSubmissions').find({ userId }).sort({ createdAt: -1 }).toArray();
+    const byTask = new Map(submissions.map((submission) => [submission.taskId, submission]));
+    const approvedPaisa = submissions.filter((item) => item.status === 'approved').reduce((sum, item) => sum + item.rewardPaisa, 0);
+    const [withdrawals, activeWithdrawal] = await Promise.all([
+      mongo.db.collection('payoutRequests').find({ userId }).sort({ createdAt: -1 }).limit(10).toArray(),
+      mongo.db.collection('payoutRequests').findOne({ userId, status: { $in: ['pending', 'processing'] } }),
+    ]);
+    const reservedPaisa = activeWithdrawal?.amountPaisa || 0;
+    response.json({ balancePaisa: approvedPaisa, availablePaisa: Math.max(0, approvedPaisa - reservedPaisa), currency: 'BDT', minimumPayoutPaisa: 10000, activeWithdrawal: activeWithdrawal ? { status: activeWithdrawal.status, amountPaisa: activeWithdrawal.amountPaisa, createdAt: activeWithdrawal.createdAt } : null, withdrawals: withdrawals.map(({ amountPaisa, status, createdAt }) => ({ amountPaisa, status, createdAt })), tasks: EARNING_TASKS.map((task) => ({ id: task.id, title: task.title, description: task.description, rewardPaisa: task.rewardPaisa, rewardLabel: task.rewardLabel, actionLabel: task.actionLabel, kind: task.kind, submission: byTask.get(task.id) ? { status: byTask.get(task.id).status, submittedAt: byTask.get(task.id).createdAt } : null })) });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/earning-tasks/:taskId/submissions', requireMongo, requireUser, async (request, response, next) => {
+  try {
+    const task = EARNING_TASKS.find((item) => item.id === request.params.taskId);
+    if (!task) return response.status(404).json({ error: 'Task not found.' });
+    const submissionText = String(request.body.submission || '').trim();
+    const styleName = String(request.body.styleName || '').trim();
+    const existingPrompt = String(request.body.existingPrompt || '').trim();
+    if (submissionText.length < 20 || submissionText.length > 2000) return response.status(400).json({ error: 'Style prompt must be between 20 and 2,000 characters.' });
+    if (task.kind === 'existing' && (styleName.length < 2 || styleName.length > 100 || existingPrompt.length < 10 || existingPrompt.length > 2000)) return response.status(400).json({ error: 'Provide a style name and its existing prompt (10–2,000 characters).' });
+    const userId = new ObjectId(request.user.userId);
+    const createdAt = new Date();
+    try {
+      await mongo.db.collection('taskSubmissions').insertOne({ userId, taskId: task.id, submission: submissionText, styleName: styleName || null, existingPrompt: existingPrompt || null, rewardPaisa: task.rewardPaisa, status: 'pending', createdAt, updatedAt: createdAt });
+    } catch (error) {
+      if (error.code === 11000) return response.status(409).json({ error: 'You have already submitted this task.' });
+      throw error;
+    }
+    response.status(201).json({ submission: { taskId: task.id, status: 'pending', submittedAt: createdAt } });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/payout-requests', requireMongo, requireUser, async (request, response, next) => {
+  try {
+    const phone = String(request.body.bkashNumber || '').replace(/[\s-]/g, '');
+    if (!/^(?:\+?8801|01)[3-9]\d{8}$/.test(phone)) return response.status(400).json({ error: 'Enter a valid Bangladesh bKash number.' });
+    const userId = new ObjectId(request.user.userId);
+    const session = mongo.client.startSession();
+    let payout;
+    try {
+      await session.withTransaction(async () => {
+        const pending = await mongo.db.collection('payoutRequests').findOne({ userId, status: { $in: ['pending', 'processing'] } }, { session });
+        if (pending) { const error = new Error('You already have a payout request under review.'); error.code = 'PAYOUT_ALREADY_PENDING'; throw error; }
+        const approved = await mongo.db.collection('taskSubmissions').aggregate([{ $match: { userId, status: 'approved' } }, { $group: { _id: null, total: { $sum: '$rewardPaisa' } } }], { session }).next();
+        const totalPaisa = approved?.total || 0;
+        if (totalPaisa < 10000) { const error = new Error('The minimum payout is ৳100.'); error.code = 'PAYOUT_MINIMUM'; throw error; }
+        const prior = await mongo.db.collection('payoutRequests').find({ userId, status: { $in: ['paid', 'processing'] } }, { session }).toArray();
+        const withdrawn = prior.reduce((sum, item) => sum + item.amountPaisa, 0);
+        if (totalPaisa - withdrawn < 10000) { const error = new Error('Your available balance is below the ৳100 minimum.'); error.code = 'PAYOUT_MINIMUM'; throw error; }
+        payout = { userId, amountPaisa: totalPaisa - withdrawn, currency: 'BDT', method: 'bkash', bkashNumber: phone, status: 'pending', createdAt: new Date(), updatedAt: new Date() };
+        await mongo.db.collection('payoutRequests').insertOne(payout, { session });
+      });
+    } finally { await session.endSession(); }
+    response.status(201).json({ payout: { amountPaisa: payout.amountPaisa, status: payout.status, createdAt: payout.createdAt } });
+  } catch (error) {
+    if (error.code === 'PAYOUT_ALREADY_PENDING') return response.status(409).json({ error: error.message });
+    if (error.code === 'PAYOUT_MINIMUM') return response.status(400).json({ error: error.message });
+    next(error);
+  }
 });
 
 app.post('/api/media', requireMongo, requireUser, upload.single('image'), async (request, response, next) => {

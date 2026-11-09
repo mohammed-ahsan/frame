@@ -25,6 +25,10 @@ async function ensureIndexes(db) {
     db.collection('usageWindows').createIndex({ userId: 1, windowStart: 1 }, { unique: true }),
     db.collection('usageWindows').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection('referrals').createIndex({ referredUserId: 1 }, { unique: true }),
+    db.collection('taskSubmissions').createIndex({ userId: 1, taskId: 1 }, { unique: true }),
+    db.collection('taskSubmissions').createIndex({ userId: 1, createdAt: -1 }),
+    db.collection('payoutRequests').createIndex({ userId: 1, createdAt: -1 }),
+    db.collection('payoutRequests').createIndex({ userId: 1, status: 1 }),
     db.collection('generations').createIndex({ userId: 1, createdAt: -1 }),
     db.collection('mediaFiles').createIndex({ userId: 1, createdAt: -1 }),
   ]);
